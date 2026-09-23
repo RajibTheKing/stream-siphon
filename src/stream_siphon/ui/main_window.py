@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -39,6 +40,7 @@ class MainWindow(QMainWindow):
         self.library = Library()
         self.worker: Optional[DownloadWorker] = None
         self.now_playing_id: Optional[str] = None
+        self.settings = QSettings()
 
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -75,6 +77,11 @@ class MainWindow(QMainWindow):
         input_row.addWidget(self.url_input, stretch=1)
         input_row.addWidget(self.download_button)
         root_layout.addLayout(input_row)
+
+        self.llm_checkbox = QCheckBox("Enrich metadata with local LLM (Ollama)")
+        self.llm_checkbox.setChecked(self.settings.value("use_llm_enrichment", False, type=bool))
+        self.llm_checkbox.toggled.connect(self._on_llm_toggle)
+        root_layout.addWidget(self.llm_checkbox)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
@@ -151,11 +158,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.status_label.setText("Starting download...")
 
-        self.worker = DownloadWorker(url)
+        self.worker = DownloadWorker(url, use_llm=self.llm_checkbox.isChecked())
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_download_finished)
         self.worker.failed.connect(self._on_download_failed)
         self.worker.start()
+
+    def _on_llm_toggle(self, checked: bool) -> None:
+        self.settings.setValue("use_llm_enrichment", checked)
 
     def _on_progress(self, percent: float, status: str) -> None:
         self.progress_bar.setValue(int(percent))

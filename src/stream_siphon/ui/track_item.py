@@ -25,6 +25,17 @@ class TrackItemWidget(QFrame):
         self.track = track
         self.setObjectName("TrackItem")
         self._build_ui()
+        self.setToolTip(self._build_tooltip())
+
+    def _build_tooltip(self) -> str:
+        lines = [f"Singer: {self.track.artist or 'Unknown'}"]
+        if self.track.composer:
+            lines.append(f"Composer: {self.track.composer}")
+        if self.track.album:
+            lines.append(f"Album: {self.track.album}")
+        if self.track.published_at:
+            lines.append(f"Published: {self.track.published_at}")
+        return "\n".join(lines)
 
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
