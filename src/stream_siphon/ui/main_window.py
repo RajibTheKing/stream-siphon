@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +27,8 @@ from ..config import APP_NAME, DEFAULT_DOWNLOAD_DIR
 from ..core.downloader import DownloadWorker
 from ..core.library import Library
 from ..core.models import Track
-from .track_item import TrackItemWidget, format_duration
+from .player_bar import PlayerBar
+from .track_item import TrackItemWidget
 
 
 class MainWindow(QMainWindow):
@@ -108,17 +108,12 @@ class MainWindow(QMainWindow):
         self.list_widget.setSpacing(6)
         root_layout.addWidget(self.list_widget, stretch=1)
 
-        player_row = QHBoxLayout()
-        self.now_playing_label = QLabel("Nothing playing")
-        self.now_playing_label.setObjectName("NowPlaying")
-        self.seek_slider = QSlider(Qt.Orientation.Horizontal)
-        self.seek_slider.setRange(0, 0)
-        self.seek_slider.sliderMoved.connect(self.player.setPosition)
-        self.time_label = QLabel("0:00 / 0:00")
-        player_row.addWidget(self.now_playing_label, stretch=1)
-        player_row.addWidget(self.seek_slider, stretch=2)
-        player_row.addWidget(self.time_label)
-        root_layout.addLayout(player_row)
+        self.player_bar = PlayerBar()
+        self.player_bar.play_pause_clicked.connect(self._on_play_pause_clicked)
+        self.player_bar.seek_moved.connect(self.player.setPosition)
+        self.player_bar.skip_requested.connect(self._on_skip_requested)
+        self.player_bar.rate_changed.connect(self.player.setPlaybackRate)
+        root_layout.addWidget(self.player_bar)
 
         self.setCentralWidget(root)
 
@@ -216,14 +211,29 @@ class MainWindow(QMainWindow):
         self.now_playing_id = track_id
         self.player.setSource(QUrl.fromLocalFile(track.file_path))
         self.player.play()
-        self.now_playing_label.setText(f"{track.title} — {track.artist}")
+        self.player_bar.set_track(track.title, track.artist)
         self._refresh_play_icons()
+
+    def _on_play_pause_clicked(self) -> None:
+        if not self.now_playing_id:
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def _on_skip_requested(self, delta_ms: int) -> None:
+        if not self.now_playing_id:
+            return
+        new_position = max(0, min(self.player.position() + delta_ms, self.player.duration()))
+        self.player.setPosition(new_position)
 
     def _on_playback_state_changed(self, _state) -> None:
         self._refresh_play_icons()
 
     def _refresh_play_icons(self) -> None:
         playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        self.player_bar.set_playing(playing)
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
             widget = self.list_widget.itemWidget(item)
@@ -231,13 +241,10 @@ class MainWindow(QMainWindow):
                 widget.set_playing(playing and widget.track.id == self.now_playing_id)
 
     def _on_position_changed(self, position: int) -> None:
-        self.seek_slider.setValue(position)
-        current = format_duration(position // 1000)
-        total = format_duration(self.player.duration() // 1000)
-        self.time_label.setText(f"{current} / {total}")
+        self.player_bar.set_position(position)
 
     def _on_duration_changed(self, duration: int) -> None:
-        self.seek_slider.setRange(0, duration)
+        self.player_bar.set_duration(duration)
 
     # ------------------------------------------------------------ Delete ---
 
@@ -255,7 +262,7 @@ class MainWindow(QMainWindow):
         if self.now_playing_id == track_id:
             self.player.stop()
             self.now_playing_id = None
-            self.now_playing_label.setText("Nothing playing")
+            self.player_bar.clear_track()
         self.library.remove(track_id)
         file_path = Path(track.file_path)
         if file_path.exists():

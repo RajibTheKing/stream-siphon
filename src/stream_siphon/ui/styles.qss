@@ -100,6 +100,104 @@ QPushButton:pressed {
     font-size: 12px;
 }
 
+#PlayerBar {
+    background-color: #1b1f27;
+    border: 1px solid #262b35;
+    border-radius: 14px;
+    margin-top: 6px;
+}
+
+#PlayerArt {
+    background-color: #232833;
+    border-radius: 10px;
+    font-size: 18px;
+    color: #5b8cff;
+}
+
+#NowPlayingTitle {
+    font-weight: 600;
+    color: #ffffff;
+    font-size: 13px;
+}
+
+#NowPlayingArtist {
+    color: #9aa0ab;
+    font-size: 11px;
+}
+
+#TimeLabel {
+    color: #9aa0ab;
+    font-size: 11px;
+    min-width: 34px;
+}
+
+#SpeedCombo {
+    background-color: #232833;
+    border: 1px solid #2c313c;
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: #e6e6e6;
+}
+
+#SpeedCombo::drop-down {
+    border: none;
+    width: 16px;
+}
+
+#SkipButton {
+    background-color: #232833;
+    border: 1px solid #2c313c;
+    border-radius: 17px;
+    font-size: 13px;
+    padding: 0;
+}
+
+#SkipButton:hover {
+    background-color: #2b313d;
+}
+
+#PlayPauseButton {
+    background-color: #5b8cff;
+    border: none;
+    border-radius: 24px;
+    color: #0c0e12;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0;
+}
+
+#PlayPauseButton:hover {
+    background-color: #7aa2ff;
+}
+
+#PlayPauseButton:pressed {
+    background-color: #4a75d9;
+}
+
+#SeekSlider::groove:horizontal {
+    height: 5px;
+    background: #2c313c;
+    border-radius: 2px;
+}
+
+#SeekSlider::sub-page:horizontal {
+    background: #5b8cff;
+    border-radius: 2px;
+}
+
+#SeekSlider::handle:horizontal {
+    background: #ffffff;
+    width: 13px;
+    height: 13px;
+    margin: -5px 0;
+    border-radius: 6px;
+}
+
+#SeekSlider::handle:horizontal:hover {
+    background: #7aa2ff;
+}
+
+
 QListWidget {
     background: transparent;
     border: none;
