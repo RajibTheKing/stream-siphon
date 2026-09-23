@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -9,8 +10,16 @@ from PySide6.QtCore import QThread, Signal
 from yt_dlp import YoutubeDL
 
 from ..config import DEFAULT_DOWNLOAD_DIR
-from .metadata import build_tags, embed_tags
+from .metadata import _truncate_title, build_tags, embed_tags
 from .models import Track
+
+_INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def _short_filename(title: str) -> str:
+    """Sanitize the pipe-truncated title so it's safe to use as a filename."""
+    cleaned = _INVALID_FILENAME_CHARS.sub("", _truncate_title(title)).strip()
+    return cleaned or "Untitled"
 
 
 class DownloadWorker(QThread):
@@ -66,9 +75,10 @@ class DownloadWorker(QThread):
             with YoutubeDL(ydl_opts) as ydl:
                 # Resolve the title first so we can check for an existing file before downloading.
                 info = ydl.extract_info(self._url, download=False)
-                expected_path = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
+                short_name = _short_filename(info.get("title") or "Unknown title")
+                expected_path = self._output_dir / f"{short_name}.mp3"
                 if expected_path.exists():
-                    self.duplicate.emit(info.get("title") or expected_path.stem)
+                    self.duplicate.emit(info.get("title") or short_name)
                     return
 
                 info = ydl.extract_info(self._url, download=True)
@@ -86,6 +96,14 @@ class DownloadWorker(QThread):
                 return
             mp3_path = matches[0]
 
+        # Rename from yt-dlp's full-title filename to the short, pipe-truncated one.
+        final_path = self._output_dir / f"{short_name}.mp3"
+        if final_path != mp3_path:
+            if final_path.exists():
+                final_path = self._output_dir / f"{short_name} ({uuid.uuid4().hex[:6]}).mp3"
+            mp3_path.rename(final_path)
+            mp3_path = final_path
+
         self.progress.emit(100.0, "Writing metadata...")
         # Negative percent tells the UI to show a busy/indeterminate bar (LLM call has no known duration).
         tags = build_tags(
@@ -94,7 +112,12 @@ class DownloadWorker(QThread):
             status_callback=lambda msg: self.progress.emit(-1.0, msg),
         )
         try:
-            embed_tags(mp3_path, tags)
+            embed_tags(
+                mp3_path,
+                tags,
+                use_llm=self._use_llm,
+                status_callback=lambda msg: self.progress.emit(-1.0, msg),
+            )
         except Exception as exc:  # noqa: BLE001 - metadata failures shouldn't drop the downloaded file
             self.progress.emit(100.0, f"Metadata warning: {exc}")
 

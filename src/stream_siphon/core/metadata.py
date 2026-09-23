@@ -6,6 +6,7 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,14 @@ class TrackTags:
     publisher: str
     comment: str
     thumbnail_url: str
+
+
+def _truncate_title(title: str) -> str:
+    """Keep only the portion before the first '|' or fullwidth '｜' separator many uploaders use for extra tags."""
+    for sep in ("｜", "|"):
+        if sep in title:
+            return title.split(sep, 1)[0].strip()
+    return title.strip()
 
 
 def _guess_singer_from_title(title: str, uploader: str) -> tuple[str, str]:
@@ -81,7 +90,8 @@ def build_tags(
     status_callback: Optional[Callable[[str], None]] = None,
 ) -> TrackTags:
     """Assemble ID3 tag values from yt-dlp's info dict, optionally enriched by a local LLM."""
-    title = info.get("title") or "Unknown title"
+    raw_title = info.get("title") or "Unknown title"
+    title = _truncate_title(raw_title)
     uploader = info.get("uploader") or info.get("channel") or "Unknown"
     upload_date = info.get("upload_date") or ""
     year = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}" if len(upload_date) == 8 else ""
@@ -97,7 +107,8 @@ def build_tags(
         singer_confident = singer != uploader
 
     if use_llm and (not singer_confident or not composer or not album):
-        enriched = _query_ollama(title, uploader, info.get("description") or "", status_callback)
+        # Pass the untruncated title so segments after '|' (e.g. the real artist) stay visible to the model.
+        enriched = _query_ollama(raw_title, uploader, info.get("description") or "", status_callback)
         if enriched:
             if not singer_confident and enriched.get("singer"):
                 singer = enriched["singer"]
@@ -116,17 +127,70 @@ def build_tags(
     )
 
 
+_THUMBNAIL_HEADERS = {
+    # YouTube's image CDN returns 403 for the default urllib User-Agent.
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    )
+}
+
+
 def _fetch_thumbnail(url: str) -> Optional[bytes]:
     if not url:
         return None
+    request = urllib.request.Request(url, headers=_THUMBNAIL_HEADERS)
     try:
-        with urllib.request.urlopen(url, timeout=_THUMBNAIL_TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=_THUMBNAIL_TIMEOUT) as response:
             return response.read()
     except (urllib.error.URLError, TimeoutError, OSError):
         return None
 
 
-def embed_tags(mp3_path: Path, tags: TrackTags) -> None:
+def _thumbnail_mime(data: bytes) -> str:
+    """Sniff the image format since yt-dlp's best thumbnail is often webp, not jpeg."""
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def _fetch_cover_art_fallback(
+    tags: TrackTags, status_callback: Optional[Callable[[str], None]] = None
+) -> Optional[bytes]:
+    """Look up real cover art on iTunes using the (possibly LLM-enriched) singer/album/title."""
+    query = " ".join(part for part in (tags.singer, tags.album or tags.title) if part).strip()
+    if not query:
+        return None
+    if status_callback:
+        status_callback("Thumbnail unavailable, searching iTunes for cover art...")
+    search_url = "https://itunes.apple.com/search?" + urllib.parse.urlencode(
+        {"term": query, "media": "music", "limit": 1}
+    )
+    request = urllib.request.Request(search_url, headers=_THUMBNAIL_HEADERS)
+    try:
+        with urllib.request.urlopen(request, timeout=_THUMBNAIL_TIMEOUT) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return None
+    results = body.get("results") or []
+    if not results:
+        return None
+    artwork_url = results[0].get("artworkUrl100") or ""
+    if not artwork_url:
+        return None
+    # iTunes serves a low-res thumbnail by default; ask for a larger crop.
+    artwork_url = artwork_url.replace("100x100bb", "600x600bb")
+    return _fetch_thumbnail(artwork_url)
+
+
+def embed_tags(
+    mp3_path: Path,
+    tags: TrackTags,
+    use_llm: bool = False,
+    status_callback: Optional[Callable[[str], None]] = None,
+) -> None:
     """Write ID3v2 tags (title, singer, composer, album, date, publisher, cover art) into the MP3 file."""
     audio = MP3(mp3_path, ID3=ID3)
     if audio.tags is None:
@@ -147,8 +211,18 @@ def embed_tags(mp3_path: Path, tags: TrackTags) -> None:
         id3.setall("COMM", [COMM(encoding=3, lang="eng", desc="", text=tags.comment)])
 
     thumbnail_bytes = _fetch_thumbnail(tags.thumbnail_url)
+    if not thumbnail_bytes and use_llm:
+        thumbnail_bytes = _fetch_cover_art_fallback(tags, status_callback)
     if thumbnail_bytes:
         id3.delall("APIC")
-        id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=thumbnail_bytes))
+        id3.add(
+            APIC(
+                encoding=3,
+                mime=_thumbnail_mime(thumbnail_bytes),
+                type=3,
+                desc="Cover",
+                data=thumbnail_bytes,
+            )
+        )
 
     audio.save(v2_version=3)
