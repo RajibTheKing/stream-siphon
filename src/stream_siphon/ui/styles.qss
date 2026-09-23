@@ -1,0 +1,142 @@
+/* Stream Siphon - dark dashboard theme */
+
+QWidget {
+    background-color: #14161b;
+    color: #e6e6e6;
+    font-family: "Segoe UI", sans-serif;
+    font-size: 13px;
+}
+
+#AppTitle {
+    font-size: 22px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+#AppSubtitle {
+    color: #9aa0ab;
+    margin-bottom: 4px;
+}
+
+#SectionTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: #ffffff;
+    margin-top: 6px;
+}
+
+QLineEdit {
+    background-color: #1f232b;
+    border: 1px solid #2c313c;
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #ffffff;
+}
+
+QLineEdit:focus {
+    border: 1px solid #5b8cff;
+}
+
+QPushButton {
+    background-color: #232833;
+    border: 1px solid #2c313c;
+    border-radius: 6px;
+    padding: 8px 14px;
+    color: #e6e6e6;
+}
+
+QPushButton:hover {
+    background-color: #2b313d;
+}
+
+QPushButton:pressed {
+    background-color: #1a1e26;
+}
+
+#PrimaryButton {
+    background-color: #5b8cff;
+    border: none;
+    color: #0c0e12;
+    font-weight: 600;
+}
+
+#PrimaryButton:hover {
+    background-color: #7aa2ff;
+}
+
+#PrimaryButton:disabled {
+    background-color: #333a47;
+    color: #7f8794;
+}
+
+#PlayButton, #DeleteButton {
+    border-radius: 18px;
+    padding: 0;
+    font-size: 14px;
+}
+
+#DeleteButton {
+    background-color: #2a1f22;
+    border-color: #472a2f;
+}
+
+#DeleteButton:hover {
+    background-color: #402024;
+}
+
+#TrackItem {
+    background-color: #1b1f27;
+    border: 1px solid #262b35;
+    border-radius: 10px;
+}
+
+#TrackTitle {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+#TrackArtist, #TrackDuration, #StatusLabel, #NowPlaying {
+    color: #9aa0ab;
+    font-size: 12px;
+}
+
+QListWidget {
+    background: transparent;
+    border: none;
+}
+
+QProgressBar {
+    background-color: #1f232b;
+    border: 1px solid #2c313c;
+    border-radius: 6px;
+    text-align: center;
+    color: #e6e6e6;
+}
+
+QProgressBar::chunk {
+    background-color: #5b8cff;
+    border-radius: 6px;
+}
+
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #2c313c;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background: #5b8cff;
+    width: 12px;
+    margin: -5px 0;
+    border-radius: 6px;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background: #2c313c;
+    border-radius: 5px;
+}

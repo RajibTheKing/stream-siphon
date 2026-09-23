@@ -1,0 +1,19 @@
+[project]
+name = "stream-siphon"
+version = "0.1.0"
+description = "Desktop app that grabs the highest-quality MP3 audio from a YouTube URL and keeps a local library."
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.6",
+    "yt-dlp>=2024.1.0",
+]
+
+[project.scripts]
+stream-siphon = "stream_siphon.main:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
