@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
         self.download_button.setEnabled(False)
         self.url_input.setEnabled(False)
         self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.status_label.setText("Starting download...")
 
@@ -162,13 +163,19 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_download_finished)
         self.worker.failed.connect(self._on_download_failed)
+        self.worker.duplicate.connect(self._on_download_duplicate)
         self.worker.start()
 
     def _on_llm_toggle(self, checked: bool) -> None:
         self.settings.setValue("use_llm_enrichment", checked)
 
     def _on_progress(self, percent: float, status: str) -> None:
-        self.progress_bar.setValue(int(percent))
+        if percent < 0:
+            # Unknown duration (e.g. waiting on the local LLM) - show a busy/marquee bar instead of a stalled 100%.
+            self.progress_bar.setRange(0, 0)
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(int(percent))
         self.status_label.setText(status)
 
     def _on_download_finished(self, track: Track) -> None:
@@ -180,6 +187,11 @@ class MainWindow(QMainWindow):
     def _on_download_failed(self, message: str) -> None:
         QMessageBox.critical(self, APP_NAME, f"Download failed:\n{message}")
         self.status_label.setText("Download failed.")
+        self._reset_download_ui()
+
+    def _on_download_duplicate(self, title: str) -> None:
+        QMessageBox.information(self, APP_NAME, f"'{title}' was already downloaded before.")
+        self.status_label.setText("Already downloaded.")
         self._reset_download_ui()
 
     def _reset_download_ui(self) -> None:

@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from mutagen.id3 import APIC, COMM, ID3, TALB, TCOM, TDRC, TIT2, TPE1, TPUB
 from mutagen.mp3 import MP3
@@ -40,8 +40,15 @@ def _guess_singer_from_title(title: str, uploader: str) -> tuple[str, str]:
     return uploader, title
 
 
-def _query_ollama(title: str, uploader: str, description: str) -> Optional[dict]:
+def _query_ollama(
+    title: str,
+    uploader: str,
+    description: str,
+    status_callback: Optional[Callable[[str], None]] = None,
+) -> Optional[dict]:
     """Ask a local Ollama model to infer singer/composer/album from video context; returns None if unreachable."""
+    if status_callback:
+        status_callback(f"Asking local LLM ({OLLAMA_MODEL}) for metadata...")
     prompt = (
         "You are a music metadata assistant. Given a YouTube video's title, channel name, "
         "and description, infer the song's metadata. Respond with ONLY strict JSON, no prose, "
@@ -58,12 +65,21 @@ def _query_ollama(title: str, uploader: str, description: str) -> Optional[dict]
     try:
         with urllib.request.urlopen(request, timeout=OLLAMA_TIMEOUT) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return json.loads(body.get("response", "{}"))
+        result = json.loads(body.get("response", "{}"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        if status_callback:
+            status_callback("LLM unreachable, skipping enrichment.")
         return None
+    if status_callback:
+        status_callback("LLM response received.")
+    return result
 
 
-def build_tags(info: dict, use_llm: bool = False) -> TrackTags:
+def build_tags(
+    info: dict,
+    use_llm: bool = False,
+    status_callback: Optional[Callable[[str], None]] = None,
+) -> TrackTags:
     """Assemble ID3 tag values from yt-dlp's info dict, optionally enriched by a local LLM."""
     title = info.get("title") or "Unknown title"
     uploader = info.get("uploader") or info.get("channel") or "Unknown"
@@ -81,7 +97,7 @@ def build_tags(info: dict, use_llm: bool = False) -> TrackTags:
         singer_confident = singer != uploader
 
     if use_llm and (not singer_confident or not composer or not album):
-        enriched = _query_ollama(title, uploader, info.get("description") or "")
+        enriched = _query_ollama(title, uploader, info.get("description") or "", status_callback)
         if enriched:
             if not singer_confident and enriched.get("singer"):
                 singer = enriched["singer"]
