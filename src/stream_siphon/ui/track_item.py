@@ -18,6 +18,7 @@ def format_duration(seconds: int) -> str:
 
 class TrackItemWidget(QFrame):
     play_requested = Signal(str)
+    edit_requested = Signal(str)
     delete_requested = Signal(str)
 
     def __init__(self, track: Track, parent=None):
@@ -62,6 +63,13 @@ class TrackItemWidget(QFrame):
         self.duration_label = QLabel(format_duration(self.track.duration))
         self.duration_label.setObjectName("TrackDuration")
         layout.addWidget(self.duration_label)
+
+        self.edit_button = QPushButton("✎")
+        self.edit_button.setObjectName("EditButton")
+        self.edit_button.setFixedSize(32, 32)
+        self.edit_button.setToolTip("Edit MP3 tags")
+        self.edit_button.clicked.connect(lambda: self.edit_requested.emit(self.track.id))
+        layout.addWidget(self.edit_button)
 
         self.delete_button = QPushButton("🗑")
         self.delete_button.setObjectName("DeleteButton")

@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QSettings, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QCheckBox,
-    QFileDialog,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,6 +29,7 @@ from ..core.downloader import DownloadWorker
 from ..core.library import Library
 from ..core.models import Track
 from .player_bar import PlayerBar
+from .tag_editor_dialog import TagEditorDialog
 from .track_item import TrackItemWidget
 
 
@@ -128,13 +130,15 @@ class MainWindow(QMainWindow):
         item = QListWidgetItem(self.list_widget)
         widget = TrackItemWidget(track)
         widget.play_requested.connect(self._toggle_play)
+        widget.edit_requested.connect(self._edit_track_tags)
         widget.delete_requested.connect(self._delete_track)
         item.setSizeHint(widget.sizeHint())
         self.list_widget.addItem(item)
         self.list_widget.setItemWidget(item, widget)
 
     def _open_download_folder(self) -> None:
-        QFileDialog.getExistingDirectory(self, "Downloads", str(DEFAULT_DOWNLOAD_DIR))
+        DEFAULT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(DEFAULT_DOWNLOAD_DIR)))
 
     # ---------------------------------------------------------- Download ---
 
@@ -245,6 +249,27 @@ class MainWindow(QMainWindow):
 
     def _on_duration_changed(self, duration: int) -> None:
         self.player_bar.set_duration(duration)
+
+    # ------------------------------------------------------------- Edit ---
+
+    def _edit_track_tags(self, track_id: str) -> None:
+        track = self.library.find(track_id)
+        if not track:
+            return
+        dialog = TagEditorDialog(track.file_path, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.updated_tags:
+            return
+
+        tags = dialog.updated_tags
+        track.title = tags.title
+        track.artist = tags.artist or track.artist
+        track.composer = tags.composer
+        track.album = tags.album
+        self.library.add(track)
+        self._reload_list()
+        self.status_label.setText(f"Updated tags for: {track.title}")
+        if self.now_playing_id == track_id:
+            self.player_bar.set_track(track.title, track.artist)
 
     # ------------------------------------------------------------ Delete ---
 

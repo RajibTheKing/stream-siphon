@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from mutagen.id3 import APIC, COMM, ID3, TALB, TCOM, TDRC, TIT2, TPE1, TPUB
+from mutagen.id3 import APIC, COMM, ID3, TALB, TCOM, TCON, TDRC, TIT2, TPE1, TPE2, TPUB, TRCK
 from mutagen.mp3 import MP3
 
 OLLAMA_URL = os.environ.get("STREAM_SIPHON_OLLAMA_URL", "http://localhost:11434/api/generate")
@@ -224,5 +224,111 @@ def embed_tags(
                 data=thumbnail_bytes,
             )
         )
+
+    audio.save(v2_version=3)
+
+
+@dataclass
+class EditableTags:
+    """Every ID3 field exposed in the manual tag editor form."""
+
+    title: str
+    artist: str
+    album_artist: str
+    composer: str
+    album: str
+    genre: str
+    year: str
+    track_number: str
+    publisher: str
+    comment: str
+
+
+def read_editable_tags(mp3_path: Path) -> tuple[EditableTags, Optional[bytes], str]:
+    """Read the current ID3 tags and cover art (bytes, mime) off an MP3 for editing."""
+    audio = MP3(mp3_path, ID3=ID3)
+    id3 = audio.tags or ID3()
+
+    def _text(frame_id: str) -> str:
+        frame = id3.get(frame_id)
+        return str(frame.text[0]) if frame and frame.text else ""
+
+    comment = ""
+    for key in id3.keys():
+        if key.startswith("COMM"):
+            frame = id3[key]
+            comment = str(frame.text[0]) if frame.text else ""
+            break
+
+    cover_bytes: Optional[bytes] = None
+    cover_mime = ""
+    for key in id3.keys():
+        if key.startswith("APIC"):
+            frame = id3[key]
+            cover_bytes = frame.data
+            cover_mime = frame.mime
+            break
+
+    tags = EditableTags(
+        title=_text("TIT2"),
+        artist=_text("TPE1"),
+        album_artist=_text("TPE2"),
+        composer=_text("TCOM"),
+        album=_text("TALB"),
+        genre=_text("TCON"),
+        year=_text("TDRC"),
+        track_number=_text("TRCK"),
+        publisher=_text("TPUB"),
+        comment=comment,
+    )
+    return tags, cover_bytes, cover_mime
+
+
+def write_editable_tags(
+    mp3_path: Path,
+    tags: EditableTags,
+    cover_bytes: Optional[bytes] = None,
+    cover_mime: str = "",
+    remove_cover: bool = False,
+) -> None:
+    """Overwrite the MP3's ID3 tags in place with user-edited values, replacing the file's own tags."""
+    audio = MP3(mp3_path, ID3=ID3)
+    if audio.tags is None:
+        audio.add_tags()
+    id3 = audio.tags
+
+    def _set(frame_id: str, frame_cls, value: str, **extra) -> None:
+        id3.delall(frame_id)
+        if value:
+            id3.add(frame_cls(encoding=3, text=value, **extra))
+
+    _set("TIT2", TIT2, tags.title)
+    _set("TPE1", TPE1, tags.artist)
+    _set("TPE2", TPE2, tags.album_artist)
+    _set("TCOM", TCOM, tags.composer)
+    _set("TALB", TALB, tags.album)
+    _set("TCON", TCON, tags.genre)
+    _set("TDRC", TDRC, tags.year)
+    _set("TRCK", TRCK, tags.track_number)
+    _set("TPUB", TPUB, tags.publisher)
+
+    id3.delall("COMM")
+    if tags.comment:
+        id3.add(COMM(encoding=3, lang="eng", desc="", text=tags.comment))
+
+    if remove_cover:
+        id3.delall("APIC")
+    elif cover_bytes is not None:
+        id3.delall("APIC")
+        id3.add(
+            APIC(
+                encoding=3,
+                mime=cover_mime or _thumbnail_mime(cover_bytes),
+                type=3,
+                desc="Cover",
+                data=cover_bytes,
+            )
+        )
+    # else: leave any existing cover art frame untouched
 
     audio.save(v2_version=3)
